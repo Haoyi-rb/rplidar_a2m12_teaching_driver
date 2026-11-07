@@ -1,0 +1,93 @@
+# A2M12 教学参数档（本包未在 A2M12 真机上验证，改动前先读懂）
+#
+# 【这份文件和 param/rplidar.yaml 是什么关系】
+#   rplidar.yaml  = 上游原版的完整参数说明书（所有参数都讲一遍）。
+#   a2m12.yaml    = 本文件，只列 A2M12 实际用到的参数 + 本机取值，launch 默认加载它。
+#   想搞懂某个参数改了会发生什么 → 见 doc/PARAM_GUIDE_A2M12.md（中文、面向新生）。
+#
+# 【A2M12 硬件事实】
+#   量程 12 m（A 系三角测距；驱动里 profile_.hw_max_distance = 12.0f）。
+#   串口波特率 256000（C1M1 是 460800，上游默认的 1000000 是给 S2/S3 的）。
+rplidar_node:
+  ros__parameters:
+    # 串口设备路径。A2M12 通过 Silicon Labs CP210x 这颗 USB 转串口芯片枚举出来。
+    # 查一下插在哪个口：ls /dev/ttyUSB*
+    # 打不开（权限问题）：sudo usermod -aG dialout $USER，然后重新登录
+    serial_port: "/dev/ttyUSB0"
+    # 波特率。A2M12 是 256000；rplidar.yaml 里默认的 1000000 是 S 系用的。
+    # 填错的现象：命令看着都成功，但一个数据点都收不到（两边语言不通）。
+    # 型号对照见 doc/PARAM_GUIDE_A2M12.md 第 5 章。
+    serial_baudrate: 256000
+    # 数据挂在哪个坐标系下（LaserScan 的 header.frame_id）。
+    # RViz 的 Fixed Frame 要么直接填这个名字，要么能通过 TF 换算到它，否则 RViz 什么都不画。
+    # rviz/a2m12.rviz 的 Fixed Frame 就是 laser_a2m12，所以单独测试时不需要 TF。
+    frame_id: "laser_a2m12"
+    # 是否让厂家 SDK 做角度校正。A 系（三角测距）建议 true，S 系建议 false。
+    angle_compensate: true
+    # 扫描模式。注意：A2M12 走老协议分支，驱动直接 startScan(0, 1) 用固件典型模式，
+    # 这个参数在 A2M12 上实际不起作用；启动日志的 "Active Mode : Standard" 是写死的字符串。
+    # 下面的说明只对新协议雷达（S/C 系）有效：Standard = 不做额外插值，硬件给多少点就是多少点。
+    # 想用 DenseBoost：请配合下面 interpolated_rays + computed_ray_count，别单独开。
+    scan_mode: "Standard"
+    # 电机转速（转/分）。0 = 驱动按 600 转下发。
+    # 【A2M12 实测 2026-11-06，FW 1.32 / HW 6】调速**有效**：/scan 随设定值从 9.23 Hz 变到 18.82 Hz
+    # （480/600/720/900 -> 9.231/11.892/14.673/18.821 Hz）。
+    # 但 A 系在 SDK 里走 MotorCtrlSupportPwm 分支，这个值被原样当作 **PWM 占空比**发给雷达
+    # （SL_LIDAR_CMD_SET_MOTOR_PWM），不是转/分：设 600 实测约 713 rpm（11.9 Hz），
+    # 近似 实际转速 ≈ 1.37 × 设定值 − 104 rpm。设 900 约 1129 rpm，已超出额定转速，只适合实验。
+    # 建议：默认 0；提帧率最多试到 720。同一场景下每圈真实点数与转速成反比，点率基本恒定（采样率是瓶颈），
+    # 所以帧率提高的代价是角分辨率变粗。绝对值随场景变：11-06 实测 600 -> 347、900 -> 224 点/圈（约 4.1 k 点/s）；
+    # 11-07 复测 600 -> 545、900 -> 343 点/帧（约 6.2 k 点/s）。
+    # 【C1M1 对比】旧驱动下 /scan 恒在约 10 Hz，原因是内置 SDK 按 Model ID 高 4 位把 C1(0x41) 当成 A 系，
+    # 转速命令没发出去。本包已修复，C1 走 RPM 闭环：480/600/720/900 -> 8.01/10.02/12.01/15.01 Hz。
+    # 改了之后用 ros2 topic hz /scan 验证，实验步骤见 doc/PARAM_GUIDE_A2M12.md 第 6 节。
+    rpm: 0
+    # 没人订阅 /scan 时自动停电机（串口不断，唤醒只要等电机加速）。
+    # 打开后 stop_motor / start_motor 服务会被拒绝 —— 订阅数成了唯一的主人。
+    auto_standby: false
+    # 是否把雷达点重采样到"虚拟光束"上。开了墙角更尖锐，但会造出插值点（假数据）。
+    # 只做避障建议保持 false；做建图/定位可以打开。
+    interpolated_rays: false
+    # 开了 interpolated_rays 时，一圈切成多少根虚拟光束。本包默认 320。
+    # 为什么不是上游的 1450：A2M12 一圈只有约 347 个真实点（rpm=600 实测），
+    # 填 1450 等于把 347 个真点外插成 4.2 倍的假点，还会出现放射状空洞。
+    # 规则：取比真实点数略小的整数；真实点数 = 2π ÷ /scan 里的 angle_increment。
+    # 调大更细密，但更吃 CPU 和带宽；填 0 会让一圈光束数变成 0（代码不做校验）。
+    computed_ray_count: 320
+    # 是否填充回波强度（intensities 数组）。新 SDK 下很多型号报的值很怪，
+    # 关掉还能省网络带宽，所以默认 false。
+    use_intensities: false
+    # 在消息里声明"最远多少米算有效"（range_max），单位米。A2M12 量程 12 m，所以填 12.0。
+    # 注意：它只是"声明"，并不会真的把远处的点裁掉（代码里没做裁剪）。
+    max_distance: 12.0
+    # 假数据模式。true = 完全不碰硬件，用程序造的圆环点云，没插雷达也能跑。
+    # 学 ROS、跑 CI、验证 RViz 配置时非常好用。
+    dummy_mode: false
+    # 是否由本节点发布 base_link -> laser_a2m12 的静态 TF。
+    # 默认 false：机器人模型（URDF/robot_state_publisher）应该自己管这条变换。
+    # 只有"单独测试、没有机器人 TF 树"时才打开。
+    publish_tf: false
+    # /scan 的 QoS 策略。sensor_data = 尽力而为、只留最近 5 条，像 UDP 直播。
+    # 改成 services_default（可靠传输）会增加延迟，弱网才需要。
+    qos_policy: "sensor_data"
+    # 连续读失败超过这个次数（> 不是 >=）就判定"掉线"，重建驱动对象重连。
+    # 每次读失败要等 SDK 超时约 2 秒。
+    # 【C1M1 实测·A2M12 未验证】设为 3 时，拔掉 USB 后约 9.5 秒判定掉线。
+    max_retries: 3
+    # 角度偏移（弧度），用来补偿硬件零位装歪。不是"改角度范围"，见下面那个参数。
+    # 符号坑：这里已经是 ROS 约定（正 = 逆时针），写反了不会报错，
+    # 只是所有障碍物系统性偏一个角度，看起来像雷达装歪了。
+    angle_offset: 0.0
+    # 角度区间报成 [0, 2π) 还是 [-π, π)。
+    #   false（默认，也是历史行为）：[0, 2π)
+    #   true：[-π, π)，与 sllidar_ros2 及多数 ROS 2 节点（如激光角度过滤器）一致
+    # 物理朝向完全不变，变的只是"刻度从哪儿开始算"。
+    # 上游注明这是 TEMPORARY 参数：下个大版本会统一成 [-π, π) 并删掉它。
+    symmetric_angle_range: false
+    # 是否额外发布 /cloud（PointCloud2）点云，主要给调试看。
+    # 坑：在线把它打开只翻转标志位、打印日志，不会真的出 /cloud ——
+    # 发布者是 lifecycle 发布者，要 deactivate 再 activate（或重新 launch）才生效。
+    publish_point_cloud: false
+    # 是否把硬件上报的原始角度塞进 intensities 数组当调试信息用。
+    # 前提是 use_intensities 为 true；且和 interpolated_rays 互斥（插值时没有意义）。
+    intensities_as_angles: false

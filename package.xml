@@ -1,0 +1,53 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>rplidar_a2m12_teaching_driver</name>
+  <version>1.4.2</version>
+
+  <description>
+    Teaching fork of the lifecycle-managed ROS 2 RPLidar driver, tuned for the
+    Slamtec A2M12 (12 m range, 256000 baud). Adds an A2M12 parameter profile,
+    a scan watchdog example, and Chinese beginner documentation. Derived from
+    the rplidar_c1m1_teaching_driver teaching package, itself based on
+    frozenreboot/rplidar_driver.
+  </description>
+
+  <maintainer email="246286208+Haoyi-rb@users.noreply.github.com">Haoyi-rb</maintainer>
+
+  <license>BSD-2-Clause</license>
+
+  <url type="repository">https://github.com/Haoyi-rb/rplidar_a2m12_ros_teaching_driver</url>
+  <url type="bugtracker">https://github.com/Haoyi-rb/rplidar_a2m12_ros_teaching_driver/issues</url>
+
+  <author email="frozenreboot@gmail.com">frozenreboot</author>
+  <author email="orhangazi4401@gmail.com">cosmicog</author>
+  <author email="blazej@fictionlab.pl">Błażej Sowa</author>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>rclcpp_components</depend>
+  <depend>sensor_msgs</depend>
+  <depend>diagnostic_updater</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>geometry_msgs</depend>
+  <depend>lifecycle_msgs</depend>
+  <depend>std_srvs</depend>
+
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_cmake_cppcheck</test_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>ament_cmake_lint_cmake</test_depend>
+  <test_depend>ament_cmake_xmllint</test_depend>
+  <test_depend>tf2_geometry_msgs</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
